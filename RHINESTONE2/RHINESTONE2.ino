@@ -62,7 +62,7 @@ void setup()
   if(!accel.begin())
   {
     Serial.println("Problem detecting the ADXL345 - check connections");
-    while(1); //All this does is fails forever, maybe get it to retry?
+    //while(1); //All this does is fails forever, maybe get it to retry?
   }
 
   accel.setRange(ADXL345_RANGE_4_G);
