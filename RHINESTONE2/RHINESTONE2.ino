@@ -17,7 +17,7 @@ uint8_t interrupt1 = 4; //pin 7 is interrupt 4, pin 2 is interrupt 1, pin 0 is i
 uint8_t interrupt2 = 1; //pin 3 maps to interrupt 0
 
 float CONSTANT_UPWARD_DT = 0.65;
-float CONSTANT_DOWNWARD_DT = 0.3;
+float CONSTANT_DOWNWARD_DT = 0.65; //0.3
 long CONSTANT_DEBOUNCETIME = 3000; // in milliseconds
 float CONSTANT_STRAIGHTANDLEVELRANGE = 0.2; //was 0.05
 float CONSTANT_GRAVITY = 9.81;  //flat, not moving = 1.59, straight down = 1.29
@@ -157,6 +157,7 @@ void Read_FIFO_ISR()
   }
 
   CALCULATE_QUEUE_STATISTICS();
+  EVALUATE_DECELERATION();
   attachInterrupt(interrupt2, Read_FIFO_ISR, RISING); // Interrupt on Pin 7
 }
 
@@ -268,48 +269,6 @@ void TRANSITION_DEACTIVATE_ACTUATOR_SL()
   VARIABLE_UPDOWN = 0;
 }
 
-/*
-void APPEND_SAMPLE_TO_QUEUE()
-{
-  Serial.println("APPEND_SAMPLE_TO_QUEUE ROUTINE");
-
-  //Shift FIFO values down one space
-  Serial.println("Queue being updated");
-  for(uint8_t i=VARIABLE_QUEUE_DECELERATION_SIZE-1; i>0; i--) //for(uint8_t i=0; i<VARIABLE_QUEUE_DECELERATION_SIZE-1; i++)//was-2
-  {
-    VARIABLE_QUEUE_DECELERATION[i] = VARIABLE_QUEUE_DECELERATION[i-1];
-  }
-
-  //Add new value to beginning of FIFO
-  VARIABLE_QUEUE_DECELERATION[0] = event.acceleration.x;
-
-  //print value just added
-  Serial.print("Uncompensated acceleration reading: ");
-  Serial.print(VARIABLE_QUEUE_DECELERATION[0]);
-  Serial.println(" inserted to queue");
-
-  //printing queue to screen
-  for(uint8_t i=0; i<VARIABLE_QUEUE_DECELERATION_SIZE; i++)//was-1
-  {
-    Serial.print("|");
-    Serial.print("i");
-    Serial.print(i);
-    Serial.print(":");
-    Serial.print(VARIABLE_QUEUE_DECELERATION[i]);
-  }
-  Serial.println("");
-
-  //Update FIFO_STATUS
-  if(FIFO_STATUS < VARIABLE_QUEUE_DECELERATION_SIZE)
-  {
-    FIFO_STATUS++;
-  }
-
-  //Maintain fixed sample rate
-  while((millis() - sample_time) < (1000/VARIABLE_SAMPLE_RATE));
-}
-*/
-
 void CALCULATE_QUEUE_STATISTICS()
 {
   Serial.println("CALCULATE_QUEUE_STATISTICS ROUTINE");
@@ -320,11 +279,16 @@ void CALCULATE_QUEUE_STATISTICS()
   max_val = temp_val;
   mean = temp_val;
 
+  Serial.print("Q- "); //Q- i1: x.xx | i2: x.xy | i..n: x.xz
   for(uint8_t i=1; i<VARIABLE_QUEUE_DECELERATION_SIZE; i++) //was: for(uint8_t i=1; i<FIFO_STATUS; i++)
   {
-    //Serial.println(temp_val);
-    //delay(1000);
     temp_val = temp_FIFO_int[i] * ADXL345_MG2G_MULTIPLIER * SENSORS_GRAVITY_STANDARD;
+    Serial.print("i");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(temp_val);
+    Serial.print(" | ");
+    
     if(temp_val < min_val)
     {
       min_val = temp_val;
@@ -335,6 +299,7 @@ void CALCULATE_QUEUE_STATISTICS()
     }
     mean = mean + temp_val;
   }
+  Serial.println(" ");
 
   mean = mean/VARIABLE_QUEUE_DECELERATION_SIZE; //was: mean = mean/FIFO_STATUS;
   Serial.print("Queue mean: ");
@@ -347,35 +312,75 @@ void CALCULATE_QUEUE_STATISTICS()
 void EVALUATE_DECELERATION()
 {
   Serial.println("EVALUATE_DECELERATION ROUTINE");
+  Serial.println(VARIABLE_UPDOWN);
 
-  //Determine if event occurred based on mean and range
-  if(range <= CONSTANT_STRAIGHTANDLEVELRANGE) //20150715 This if could largely be superseded by an if in an earlier routine, maybe mode normal or calculate statistics, and only the relevant pitch angle/calculate decel code called.
+  if(VARIABLE_UPDOWN == 1) //Light is ON
   {
-    Serial.println("Queue range indicates insignificant deceleration, updating pitch angle");
-    VARIABLE_COMPUTED_PITCHANGLE = asin(mean/CONSTANT_GRAVITY);//*(180/pi);
-    Serial.print("Pitch Angle: ");
-    Serial.println(VARIABLE_COMPUTED_PITCHANGLE);
-    //20150714 IS THERE ANY REASON THIS ALWAYS SEEMS TO EVALUATE TO 0.03 ON LAST TEST?
-  }
-  else
-  {
-    //20150714 ONLY IF THE DECELERATION IS "SIGNIFICANT" (i.e. range is wide enough) ARE THE DECISIONS MADE TO TURN LIGHT ON OR OFF.  DOESN'T ACCOUNT FOR THE LIKELY POSSIBILITY THAT LIGHT GETS TURNED ON THEN THE RANGE DROPS AND IT NEVER GETS TURNED OFF...
-    Serial.println("Queue range indicates significant deceleration, calculating compensated deceleration");
     VARIABLE_COMPENSATED_DECELERATION = abs(mean - (CONSTANT_GRAVITY*sin(VARIABLE_COMPUTED_PITCHANGLE)))*cos(VARIABLE_COMPUTED_PITCHANGLE);
     Serial.print("Compensated deceleration: ");
     Serial.println(VARIABLE_COMPENSATED_DECELERATION);
-
-    if((VARIABLE_UPDOWN == 0)&&(VARIABLE_COMPENSATED_DECELERATION >= CONSTANT_UPWARD_DT))
-    {
-      Serial.println("Upward");
-      TRANSITION_ACTIVATE_ACTUATOR_SL();
-    }
-    else if((VARIABLE_UPDOWN == 1)&&(VARIABLE_COMPENSATED_DECELERATION < CONSTANT_DOWNWARD_DT)) //20150714 Any reason this isn't encapsulated in curly braces in the same way as the previous else? 
+    
+    if(VARIABLE_COMPENSATED_DECELERATION < CONSTANT_DOWNWARD_DT)
     {
       Serial.println("Downward");
       TRANSITION_DEACTIVATE_ACTUATOR_SL();
     }
   }
+  else if(VARIABLE_UPDOWN == 0) //Light is OFF
+  {
+    //Determine if event occurred based on mean and range
+    if(range <= CONSTANT_STRAIGHTANDLEVELRANGE) //20150715 This if could largely be superseded by an if in an earlier routine, maybe mode normal or calculate statistics, and only the relevant pitch angle/calculate decel code called.
+    {
+      Serial.println("Queue range indicates insignificant deceleration, updating pitch angle");
+      VARIABLE_COMPUTED_PITCHANGLE = asin(mean/CONSTANT_GRAVITY);//*(180/pi);
+      Serial.print("Pitch Angle: ");
+      Serial.println(VARIABLE_COMPUTED_PITCHANGLE);
+      //20150714 IS THERE ANY REASON THIS ALWAYS SEEMS TO EVALUATE TO 0.03 ON LAST TEST?
+    }
+    else
+    {
+      //20150714 ONLY IF THE DECELERATION IS "SIGNIFICANT" (i.e. range is wide enough) ARE THE DECISIONS MADE TO TURN LIGHT ON OR OFF.  DOESN'T ACCOUNT FOR THE LIKELY POSSIBILITY THAT LIGHT GETS TURNED ON THEN THE RANGE DROPS AND IT NEVER GETS TURNED OFF...
+      Serial.println("Queue range indicates significant deceleration, calculating compensated deceleration");
+      VARIABLE_COMPENSATED_DECELERATION = abs(mean - (CONSTANT_GRAVITY*sin(VARIABLE_COMPUTED_PITCHANGLE)))*cos(VARIABLE_COMPUTED_PITCHANGLE);
+      Serial.print("Compensated deceleration: ");
+      Serial.println(VARIABLE_COMPENSATED_DECELERATION);
+  
+      if(VARIABLE_COMPENSATED_DECELERATION >= CONSTANT_UPWARD_DT)
+      {
+        Serial.println("Upward");
+        TRANSITION_ACTIVATE_ACTUATOR_SL();
+      }
+    }
+  }
+
+//  //Determine if event occurred based on mean and range
+//  if(range <= CONSTANT_STRAIGHTANDLEVELRANGE) //20150715 This if could largely be superseded by an if in an earlier routine, maybe mode normal or calculate statistics, and only the relevant pitch angle/calculate decel code called.
+//  {
+//    Serial.println("Queue range indicates insignificant deceleration, updating pitch angle");
+//    VARIABLE_COMPUTED_PITCHANGLE = asin(mean/CONSTANT_GRAVITY);//*(180/pi);
+//    Serial.print("Pitch Angle: ");
+//    Serial.println(VARIABLE_COMPUTED_PITCHANGLE);
+//    //20150714 IS THERE ANY REASON THIS ALWAYS SEEMS TO EVALUATE TO 0.03 ON LAST TEST?
+//  }
+//  else
+//  {
+//    //20150714 ONLY IF THE DECELERATION IS "SIGNIFICANT" (i.e. range is wide enough) ARE THE DECISIONS MADE TO TURN LIGHT ON OR OFF.  DOESN'T ACCOUNT FOR THE LIKELY POSSIBILITY THAT LIGHT GETS TURNED ON THEN THE RANGE DROPS AND IT NEVER GETS TURNED OFF...
+//    Serial.println("Queue range indicates significant deceleration, calculating compensated deceleration");
+//    VARIABLE_COMPENSATED_DECELERATION = abs(mean - (CONSTANT_GRAVITY*sin(VARIABLE_COMPUTED_PITCHANGLE)))*cos(VARIABLE_COMPUTED_PITCHANGLE);
+//    Serial.print("Compensated deceleration: ");
+//    Serial.println(VARIABLE_COMPENSATED_DECELERATION);
+//
+//    if((VARIABLE_UPDOWN == 0)&&(VARIABLE_COMPENSATED_DECELERATION >= CONSTANT_UPWARD_DT))
+//    {
+//      Serial.println("Upward");
+//      TRANSITION_ACTIVATE_ACTUATOR_SL();
+//    }
+//    else if((VARIABLE_UPDOWN == 1)&&(VARIABLE_COMPENSATED_DECELERATION < CONSTANT_DOWNWARD_DT)) //20150714 Any reason this isn't encapsulated in curly braces in the same way as the previous else? 
+//    {
+//      Serial.println("Downward");
+//      TRANSITION_DEACTIVATE_ACTUATOR_SL();
+//    }
+//  }
 
   while((millis() - decision_time) < (1000/VARIABLE_STRAIGHTANDLEVEL_DECISION_RATE));
 }
