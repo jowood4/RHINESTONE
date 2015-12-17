@@ -48,23 +48,50 @@ float max_val = 0; //used to calculate data range
 float mean = 0;
 float range;
 
+uint8_t openlog_connected;
+uint8_t print_serial = 1;
+
 void setup()
 {
-  pixels.begin();
 
-  Serial.begin(9600);
-  while (!Serial);
+  if(print_serial)
+  {
+    Serial.begin(9600);
+    while (!Serial);
+  }
 
+  //Start datalogger
+  Serial1.begin(9600);
+  if(gotoCommandMode())
+  {
+    openlog_connected = 1;
+    Serial1.write("append newfile.csv");
+    Serial1.write(13);
+    Serial.println("OpenLog online");
+    //Serial.write(13);
+
+    //Serial1.print("Test write stuff");
+    //Serial1.write(13);
+  }
+  else
+  {
+    Serial.print("OpenLog offline");
+    Serial.write(13);
+  }
+
+  //Start accelerometer
   sensor_t sensor;
   accel.getSensor(&sensor);
   delay(1000);
   
   if(!accel.begin())
   {
-    Serial.println("Problem detecting the ADXL345 - check connections");
-    //while(1); //All this does is fails forever, maybe get it to retry?
+    if(print_serial)
+    {
+      Serial.println("Problem detecting the ADXL345 - check connections");
+    }
   }
-
+  
   accel.setRange(ADXL345_RANGE_4_G);
   accel.setDataRate(ADXL345_DATARATE_25_HZ);
   accel.setFIFOMode(ADXL345_FIFO_MODE_FIFO);
@@ -73,6 +100,8 @@ void setup()
   accel.writeRegister(ADXL345_REG_INT_MAP, 0);
   accel.writeBits(ADXL345_REG_INT_ENABLE, 1, ADXL345_INT_WATERMARK_BIT, 1);
 
+  //Start neopixel
+  pixels.begin();
   pixels.setPixelColor(0, pixels.Color(150,150,0)); // Moderately bright green color.
   pixels.show();
 
@@ -93,7 +122,10 @@ void pushbutton_ISR()
   delay(CONSTANT_DEBOUNCETIME);
   if(digitalRead(button_PIN) == 0) //(SENSOR_UCS) == 0)
   {
-      Serial.println("UCS has been pressed for the debounce period");
+      if(print_serial)
+      {
+        Serial.println("UCS has been pressed for the debounce period");
+      }
       if(VARIABLE_CURRENT_MODE == "mode_normal")
       {
         TRANSITION_TO_SLEEP();
@@ -108,7 +140,10 @@ void pushbutton_ISR()
 
 void BOOT()
 {
-  Serial.println("BOOT ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("BOOT ROUTINE");
+  }
   VARIABLE_UPDOWN = 0;
   VARIABLE_COMPENSATED_DECELERATION = 0;
   VARIABLE_CURRENT_MODE = "boot";
@@ -121,7 +156,10 @@ void BOOT()
 
 void TRANSITION_TO_SLEEP()
 {
-  Serial.println("TRANSITION_TO_SLEEP ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("TRANSITION_TO_SLEEP ROUTINE");
+  }
   detachInterrupt(interrupt2);
   accel.writeBits(ADXL345_REG_POWER_CTL, 0, ADXL345_PCTL_MEASURE_BIT, 1); 
   VARIABLE_CURRENT_MODE = "transition_to_sleep";  
@@ -131,7 +169,10 @@ void TRANSITION_TO_SLEEP()
 
 void TRANSITION_TO_NORMAL()
 {
-  Serial.println("TRANSITION_TO_NORMAL ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("TRANSITION_TO_NORMAL ROUTINE");
+  }
   attachInterrupt(interrupt2, Read_FIFO_ISR, RISING); // Interrupt on Pin 7
   accel.writeBits(ADXL345_REG_POWER_CTL, 1, ADXL345_PCTL_MEASURE_BIT, 1);
   VARIABLE_CURRENT_MODE = "transition_to_normal"; 
@@ -141,7 +182,10 @@ void TRANSITION_TO_NORMAL()
 
 void MODE_NORMAL()
 {
-  Serial.println("MODE_NORMAL ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("MODE_NORMAL ROUTINE");
+  }
   VARIABLE_CURRENT_MODE = "mode_normal";  
 }
 
@@ -149,8 +193,11 @@ void Read_FIFO_ISR()
 {
   detachInterrupt(interrupt2);
 
-  Serial.println("FIFO filled");
-
+  if(print_serial)
+  {
+    Serial.println("FIFO filled");
+  }
+  
   for(uint8_t i = 0; i<32; i++)
   {
     temp_FIFO_int[i] = accel.getX();
@@ -163,13 +210,19 @@ void Read_FIFO_ISR()
 
 void MODE_SLEEP()
 {
-  Serial.println("MODE_SLEEP ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("MODE_SLEEP ROUTINE");
+  }
   VARIABLE_CURRENT_MODE = "mode_sleep";
 }
 
 void SLEEP_SIGNAL()
 {
-  Serial.println("SLEEP_SIGNAL ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("SLEEP_SIGNAL ROUTINE");
+  }
   unsigned long time = millis();
 
   //digitalWrite(ACTUATOR_SL,LOW);
@@ -203,7 +256,10 @@ void SLEEP_SIGNAL()
 
 void NORMAL_SIGNAL()
 {
-  Serial.println("NORMAL_SIGNAL ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("NORMAL_SIGNAL ROUTINE");
+  }
   unsigned long time = millis();
 
   //digitalWrite(ACTUATOR_SL,LOW);
@@ -239,7 +295,10 @@ void NORMAL_SIGNAL()
 
 void BRAKING_SIGNAL_ON()
 {
-  Serial.println("BRAKING_SIGNAL_ON ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("BRAKING_SIGNAL_ON ROUTINE");
+  }
   //digitalWrite(ACTUATOR_SL,HIGH);
   pixels.setPixelColor(0, pixels.Color(200,0,0)); // Moderately bright green color.
   pixels.show();
@@ -247,7 +306,10 @@ void BRAKING_SIGNAL_ON()
 
 void BRAKING_SIGNAL_OFF()
 {
-  Serial.println("BRAKING_SIGNAL_OFF ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("BRAKING_SIGNAL_OFF ROUTINE");
+  }
   //digitalWrite(ACTUATOR_SL,LOW);
   pixels.setPixelColor(0, pixels.Color(0,0,0)); // Moderately bright green color.
   pixels.show();
@@ -255,7 +317,10 @@ void BRAKING_SIGNAL_OFF()
 
 void TRANSITION_ACTIVATE_ACTUATOR_SL()
 {
-  Serial.println("TRANSITION_ACTIVATE_ACTUATOR_SL ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("TRANSITION_ACTIVATE_ACTUATOR_SL ROUTINE");
+  }
   //VARIABLE_CURRENT_MODE = "transition_activate_actuator_sl";
   BRAKING_SIGNAL_ON();
   VARIABLE_UPDOWN = 1;
@@ -263,7 +328,10 @@ void TRANSITION_ACTIVATE_ACTUATOR_SL()
 
 void TRANSITION_DEACTIVATE_ACTUATOR_SL()
 {
-  Serial.println("TRANSITION_DEACTIVATE_ACTUATOR_SL ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("TRANSITION_DEACTIVATE_ACTUATOR_SL ROUTINE");
+  }
   //VARIABLE_CURRENT_MODE = "transition_deactivate_actuator_sl";
   BRAKING_SIGNAL_OFF();
   VARIABLE_UPDOWN = 0;
@@ -271,7 +339,10 @@ void TRANSITION_DEACTIVATE_ACTUATOR_SL()
 
 void CALCULATE_QUEUE_STATISTICS()
 {
-  Serial.println("CALCULATE_QUEUE_STATISTICS ROUTINE");
+  if(print_serial)
+  {
+    Serial.println("CALCULATE_QUEUE_STATISTICS ROUTINE");
+  }
   float temp_val = temp_FIFO_int[0] * ADXL345_MG2G_MULTIPLIER * SENSORS_GRAVITY_STANDARD;
 
   //Calculate range and mean of sampled data
@@ -279,15 +350,36 @@ void CALCULATE_QUEUE_STATISTICS()
   max_val = temp_val;
   mean = temp_val;
 
-  Serial.print("Q- "); //Q- i1: x.xx | i2: x.xy | i..n: x.xz
+  if(print_serial)
+  {
+    Serial.print("Q- "); //Q- i1: x.xx | i2: x.xy | i..n: x.xz
+  }
+  if(openlog_connected)
+  {
+    Serial1.print("Q- ");
+  }
+    
   for(uint8_t i=1; i<VARIABLE_QUEUE_DECELERATION_SIZE; i++) //was: for(uint8_t i=1; i<FIFO_STATUS; i++)
   {
     temp_val = temp_FIFO_int[i] * ADXL345_MG2G_MULTIPLIER * SENSORS_GRAVITY_STANDARD;
-    Serial.print("i");
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.print(temp_val);
-    Serial.print(" | ");
+
+    if(print_serial)
+    {
+      Serial.print("i");
+      Serial.print(i);
+      Serial.print(": ");
+      Serial.print(temp_val);
+      Serial.print(" | ");
+    }
+
+    if(openlog_connected)
+    {
+      Serial1.print("i");
+      Serial1.print(i);
+      Serial1.print(": ");
+      Serial1.print(temp_val);
+      Serial1.print(" | ");
+    }
     
     if(temp_val < min_val)
     {
@@ -299,30 +391,51 @@ void CALCULATE_QUEUE_STATISTICS()
     }
     mean = mean + temp_val;
   }
-  Serial.println(" ");
 
   mean = mean/VARIABLE_QUEUE_DECELERATION_SIZE; //was: mean = mean/FIFO_STATUS;
-  Serial.print("Queue mean: ");
-  Serial.println(mean);
   range = max_val - min_val;
-  Serial.print("Queue range: ");
-  Serial.println(range);
+
+  if(print_serial)
+  {
+    Serial.println(" ");
+    Serial.print("Queue mean: ");
+    Serial.println(mean);
+    Serial.print("Queue range: ");
+    Serial.println(range);
+  }
+  if(openlog_connected)
+  {
+    Serial1.println(" ");
+    Serial1.print("Queue mean: ");
+    Serial1.println(mean);
+    Serial1.print("Queue range: ");
+    Serial1.println(range);
+  }
 }
 
 void EVALUATE_DECELERATION()
 {
-  Serial.println("EVALUATE_DECELERATION ROUTINE");
-  Serial.println(VARIABLE_UPDOWN);
-
+  if(print_serial)
+  {
+    Serial.println("EVALUATE_DECELERATION ROUTINE");
+    Serial.println(VARIABLE_UPDOWN);
+  }
+  
   if(VARIABLE_UPDOWN == 1) //Light is ON
   {
     VARIABLE_COMPENSATED_DECELERATION = abs(mean - (CONSTANT_GRAVITY*sin(VARIABLE_COMPUTED_PITCHANGLE)))*cos(VARIABLE_COMPUTED_PITCHANGLE);
-    Serial.print("Compensated deceleration: ");
-    Serial.println(VARIABLE_COMPENSATED_DECELERATION);
+    if(print_serial)
+    {
+      Serial.print("Compensated deceleration: ");
+      Serial.println(VARIABLE_COMPENSATED_DECELERATION);
+    }
     
     if(VARIABLE_COMPENSATED_DECELERATION < CONSTANT_DOWNWARD_DT)
     {
-      Serial.println("Downward");
+      if(print_serial)
+      {
+        Serial.println("Downward");
+      }
       TRANSITION_DEACTIVATE_ACTUATOR_SL();
     }
   }
@@ -331,23 +444,32 @@ void EVALUATE_DECELERATION()
     //Determine if event occurred based on mean and range
     if(range <= CONSTANT_STRAIGHTANDLEVELRANGE) //20150715 This if could largely be superseded by an if in an earlier routine, maybe mode normal or calculate statistics, and only the relevant pitch angle/calculate decel code called.
     {
-      Serial.println("Queue range indicates insignificant deceleration, updating pitch angle");
       VARIABLE_COMPUTED_PITCHANGLE = asin(mean/CONSTANT_GRAVITY);//*(180/pi);
-      Serial.print("Pitch Angle: ");
-      Serial.println(VARIABLE_COMPUTED_PITCHANGLE);
+      if(print_serial)
+      {
+        Serial.println("Queue range indicates insignificant deceleration, updating pitch angle");
+        Serial.print("Pitch Angle: ");
+        Serial.println(VARIABLE_COMPUTED_PITCHANGLE);
       //20150714 IS THERE ANY REASON THIS ALWAYS SEEMS TO EVALUATE TO 0.03 ON LAST TEST?
+      }
     }
     else
     {
       //20150714 ONLY IF THE DECELERATION IS "SIGNIFICANT" (i.e. range is wide enough) ARE THE DECISIONS MADE TO TURN LIGHT ON OR OFF.  DOESN'T ACCOUNT FOR THE LIKELY POSSIBILITY THAT LIGHT GETS TURNED ON THEN THE RANGE DROPS AND IT NEVER GETS TURNED OFF...
-      Serial.println("Queue range indicates significant deceleration, calculating compensated deceleration");
       VARIABLE_COMPENSATED_DECELERATION = abs(mean - (CONSTANT_GRAVITY*sin(VARIABLE_COMPUTED_PITCHANGLE)))*cos(VARIABLE_COMPUTED_PITCHANGLE);
-      Serial.print("Compensated deceleration: ");
-      Serial.println(VARIABLE_COMPENSATED_DECELERATION);
+      if(print_serial)
+      {
+        Serial.println("Queue range indicates significant deceleration, calculating compensated deceleration");
+        Serial.print("Compensated deceleration: ");
+        Serial.println(VARIABLE_COMPENSATED_DECELERATION);
+      }
   
       if(VARIABLE_COMPENSATED_DECELERATION >= CONSTANT_UPWARD_DT)
       {
-        Serial.println("Upward");
+        if(print_serial)
+        {
+          Serial.println("Upward");
+        }
         TRANSITION_ACTIVATE_ACTUATOR_SL();
       }
     }
@@ -383,5 +505,40 @@ void EVALUATE_DECELERATION()
 //  }
 
   while((millis() - decision_time) < (1000/VARIABLE_STRAIGHTANDLEVEL_DECISION_RATE));
+}
+
+
+//This function pushes OpenLog into command mode
+bool gotoCommandMode(void) {
+
+  bool result = false;
+  int reading;
+
+  if(print_serial)
+  {
+    Serial.println("Going into command mode");
+    //Serial.write(13);
+  }
+  
+  //Send three control z to enter OpenLog command mode
+  //Works with Arduino v1.0
+  Serial1.write(26);
+  Serial1.write(26);
+  Serial1.write(26);
+
+  for(int timeOut = 0 ; timeOut < 10000 ; timeOut++)
+    {
+      while(Serial1.available())
+      {
+        reading = Serial1.read();
+        if(reading == '>')
+        {
+          result = true;
+          break;
+        }
+      }
+    }
+
+    return result;
 }
 
