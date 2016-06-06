@@ -48,13 +48,13 @@ float max_val = 0; //used to calculate data range
 float mean = 0;
 float range;
 
-uint8_t openlog_connected;
-uint8_t print_serial = 1;
+uint8_t openlog_connected;  //Variable used to track whether Openlog is connected and should be written to
+uint8_t print_serial = 0;  //Serial is used as a debug tool.  Set this to 1 for debug mode.
 
 void setup()
 {
 
-  if(print_serial)
+  if(print_serial) // Start serial communication for debug mode, if necessary
   {
     Serial.begin(9600);
     while (!Serial);
@@ -67,16 +67,18 @@ void setup()
     openlog_connected = 1;
     Serial1.write("append newfile.csv");
     Serial1.write(13);
-    Serial.println("OpenLog online");
-    //Serial.write(13);
-
-    //Serial1.print("Test write stuff");
-    //Serial1.write(13);
+	if(print_serial)
+	{
+		Serial.println("OpenLog online");
+	}
   }
   else
   {
-    Serial.print("OpenLog offline");
-    Serial.write(13);
+    if(print_serial)
+	{
+		Serial.print("OpenLog offline");
+		Serial.write(13);
+	}
   }
 
   //Start accelerometer
@@ -112,13 +114,13 @@ void setup()
   TRANSITION_TO_SLEEP();
 }
 
-void loop()
+void loop() // Program is run through interrupts, so loop is not used.
 {  
 }
 
-void pushbutton_ISR()
+void pushbutton_ISR() // Function called when button is pressed.
 {
-  detachInterrupt(interrupt1);
+  detachInterrupt(interrupt1); // Removing the interrupt allows timers to be used in this function
   delay(CONSTANT_DEBOUNCETIME);
   if(digitalRead(button_PIN) == 0) //(SENSOR_UCS) == 0)
   {
